@@ -1,0 +1,21 @@
+{
+  "firstName": "Jane",
+  "lastName": "Smith",
+  "company": "Acme Corp",
+  "role": "Software Engineer",
+  "startDate": "June 1, 2026",
+  "salary": "$120,000",
+  "address": {
+    "street": "123 Main St",
+    "city": "San Francisco",
+    "state": "CA",
+    "zip": "94102"
+  },
+  "benefits": [
+    { "name": "Health Insurance", "detail": "Full medical, dental, vision" },
+    { "name": "401(k)", "detail": "4% company match" },
+    { "name": "PTO", "detail": "20 days per year" }
+  ],
+  "isRemote": true,
+  "managerName": "Bob Johnson"
+}
