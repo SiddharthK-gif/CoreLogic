@@ -17,5 +17,8 @@
   "bugs": {
     "url": "https://github.com/SiddharthK-gif/CoreLogic/issues"
   },
-  "homepage": "https://github.com/SiddharthK-gif/CoreLogic#readme"
+  "homepage": "https://github.com/SiddharthK-gif/CoreLogic#readme",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1"
+  }
 }
