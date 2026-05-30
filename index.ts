@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
 import PizZip from "pizzip";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 import { replaceTemplateVariables } from "./replacer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -52,8 +52,10 @@ async function generateDataFromDescription(
   placeholders: string[],
   apiKey: string
 ): Promise<JsonObject> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const client = new OpenAI({
+    apiKey,
+    baseURL: "https://integrate.api.nvidia.com/v1",
+  });
 
   const prompt = `
 You are a data extractor. The user has described a document in plain English.
@@ -72,9 +74,13 @@ Rules:
 - If a value is not mentioned in the description, make a sensible default based on context
 `.trim();
 
-  const result = await model.generateContent(prompt);
-  const text   = result.response.text().trim();
-  const clean  = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+  const response = await client.chat.completions.create({
+    model:    "meta/llama-3.1-8b-instruct",
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text  = response.choices[0]?.message?.content?.trim() ?? "";
+  const clean = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
 
   try {
     return JSON.parse(clean) as JsonObject;
@@ -96,7 +102,8 @@ Arguments:
                   Defaults to <template>-output.docx in the same folder
 
 Environment:
-  GEMINI_API_KEY   Your Gemini API key (required)
+  NVIDIA_API_KEY   Your NVIDIA API key (required)
+                   Get one at https://build.nvidia.com
 `);
 }
 
@@ -108,10 +115,10 @@ async function main(): Promise<void> {
     process.exit(args.length < 1 ? 1 : 0);
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) {
-    console.error("❌ Missing GEMINI_API_KEY environment variable.");
-    console.error("   Set it with: $env:GEMINI_API_KEY=\"your-key-here\"");
+    console.error("❌ Missing NVIDIA_API_KEY environment variable.");
+    console.error('   Set it with: $env:NVIDIA_API_KEY="your-key-here"');
     process.exit(1);
   }
 
@@ -133,7 +140,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Step 3 — send description + placeholder names to Gemini
+    // Step 3 — send description + placeholder names to NVIDIA AI
     console.log("\n🤖 Generating data from your description...");
     const rawData = await generateDataFromDescription(description, placeholders, apiKey);
     const data    = flattenObject(rawData);
