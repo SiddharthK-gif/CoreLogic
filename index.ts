@@ -1,8 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as readline from "readline";
-import PizZip from "pizzip";
-import OpenAI from "openai";
+import { fillSchemaFromContext, JsonSchema } from "./ai";
 import { replaceTemplateVariables } from "./replacer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,77 +25,16 @@ function flattenObject(obj: JsonObject, prefix = "", result: JsonObject = {}): J
   return result;
 }
 
-function extractPlaceholders(templatePath: string): string[] {
-  const blob    = fs.readFileSync(path.resolve(templatePath));
-  const zip     = new PizZip(blob);
-  const xml     = zip.files["word/document.xml"].asText();
-  const text    = xml.replace(/<[^>]+>/g, "");
-  const matches = text.match(/\{\{[^}]+\}\}/g) ?? [];
-  return [...new Set(matches.map((m) => m.replace(/^\{\{|\}\}$/g, "")))]
-    .filter((n) => !n.startsWith("#") && !n.startsWith("/") && !n.startsWith("^"));
-}
-
-function askQuestion(prompt: string): Promise<string> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-async function generateDataFromDescription(
-  description: string,
-  placeholders: string[],
-  apiKey: string
-): Promise<JsonObject> {
-  const client = new OpenAI({
-    apiKey,
-    baseURL: "https://integrate.api.nvidia.com/v1",
-  });
-
-  const prompt = `
-You are a data extractor. The user has described a document in plain English.
-Extract the relevant values from their description and map them to EXACTLY these key names:
-
-${placeholders.map((p) => `- ${p}`).join("\n")}
-
-User description: ${description}
-
-Rules:
-- Return ONLY a valid JSON object, no markdown, no explanation, no code fences
-- You MUST use the exact key names listed above, do not rename or invent keys
-- For dot-notation keys like "address.city", create a nested object: { "address": { "city": "..." } }
-- For array keys like "benefits" or "items", create an array of objects with realistic values
-- For boolean keys like "isRemote", use true or false
-- If a value is not mentioned in the description, make a sensible default based on context
-`.trim();
-
-  const response = await client.chat.completions.create({
-    model:    "meta/llama-3.1-8b-instruct",
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text  = response.choices[0]?.message?.content?.trim() ?? "";
-  const clean = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-
-  try {
-    return JSON.parse(clean) as JsonObject;
-  } catch {
-    throw new Error(`AI returned invalid JSON:\n${text}`);
-  }
-}
-
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 function printUsage(): void {
   console.log(`
 Usage:
-  node dist/index.js <template.docx> [output.docx]
+  node dist/index.js <template.docx> <schema.json> [output.docx]
 
 Arguments:
   template.docx   Path to the Word document with {{placeholders}}
+  schema.json     Path to your JSON schema file with empty values
   output.docx     (optional) Where to write the filled document
                   Defaults to <template>-output.docx in the same folder
 
@@ -110,9 +47,9 @@ Environment:
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
-  if (args.length < 1 || args.includes("--help") || args.includes("-h")) {
+  if (args.length < 2 || args.includes("--help") || args.includes("-h")) {
     printUsage();
-    process.exit(args.length < 1 ? 1 : 0);
+    process.exit(args.length < 2 ? 1 : 0);
   }
 
   const apiKey = process.env.NVIDIA_API_KEY;
@@ -122,36 +59,33 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const [templatePath, outputPath] = args;
+  const [templatePath, schemaPath, outputPath] = args;
 
   if (!fs.existsSync(path.resolve(templatePath))) {
     console.error(`❌ Template file not found: ${templatePath}`);
     process.exit(1);
   }
 
+  if (!fs.existsSync(path.resolve(schemaPath))) {
+    console.error(`❌ Schema file not found: ${schemaPath}`);
+    process.exit(1);
+  }
+
   try {
-    // Step 1 — silently scan the template for placeholder key names
-    const placeholders = extractPlaceholders(templatePath);
+    // Step 1 — read the JSON schema file
+    const schema = JSON.parse(fs.readFileSync(path.resolve(schemaPath), "utf-8")) as JsonSchema;
 
-    // Step 2 — ask the user for a description
-    const description = await askQuestion("Enter a description: ");
-    if (!description) {
-      console.error("❌ Description cannot be empty.");
-      process.exit(1);
-    }
+    // Step 2 — pass the schema to ai.ts, get back the filled schema
+    const filledSchema = await fillSchemaFromContext(schema, apiKey);
+    const data         = flattenObject(filledSchema as JsonObject);
 
-    // Step 3 — send description + placeholder names to NVIDIA AI
-    console.log("\n🤖 Generating data from your description...");
-    const rawData = await generateDataFromDescription(description, placeholders, apiKey);
-    const data    = flattenObject(rawData);
-
-    // Step 4 — read the docx file into a blob
+    // Step 3 — read the docx file into a blob
     const blob = fs.readFileSync(path.resolve(templatePath));
 
-    // Step 5 — replace template variables, get back the output buffer
+    // Step 4 — replace template variables with the filled schema values
     const outBuffer = replaceTemplateVariables(blob, data);
 
-    // Step 6 — write the buffer to disk
+    // Step 5 — write the buffer to disk
     const absTemplate = path.resolve(templatePath);
     const resolvedOutput =
       outputPath ??

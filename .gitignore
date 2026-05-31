@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.docx
 package-lock.json
+output.docx

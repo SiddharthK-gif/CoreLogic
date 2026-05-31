@@ -1,0 +1,19 @@
+{
+  "firstName": "",
+  "lastName": "",
+  "role": "",
+  "company": "",
+  "startDate": "",
+  "salary": "",
+  "managerName": "",
+  "isRemote": "",
+  "address": {
+    "street": "",
+    "city": "",
+    "state": "",
+    "zip": ""
+  },
+  "benefits": [
+    { "name": "", "detail": "" }
+  ]
+}

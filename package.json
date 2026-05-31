@@ -20,6 +20,8 @@
   "homepage": "https://github.com/SiddharthK-gif/CoreLogic#readme",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@langchain/core": "^1.1.48",
+    "@langchain/openai": "^1.4.7",
     "openai": "^6.39.1"
   }
 }
